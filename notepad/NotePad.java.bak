@@ -1,0 +1,811 @@
+import java.io.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.awt.datatransfer.*;
+import javax.swing.*;
+
+
+
+class CloseDialog extends Dialog implements ActionListener
+{
+	NotePad ref;//for reference to notepad obj
+	Label l;//label to display message of the dialogbox
+	Button save,dontSave,cancel;//buttons for control on dialogbox
+	CloseDialog(Frame parent)
+	{
+		super(parent,true);
+		ref=(NotePad)parent;
+		setLayout(new BorderLayout(10,10));
+		l=new Label("File not saved");
+		save=new Button("save");
+		dontSave=new Button("Don't Save");
+		cancel=new Button("cancel");
+		l.setBackground(Color.white);
+		add(l,BorderLayout.NORTH);
+		add(save,BorderLayout.WEST);
+		add(dontSave,BorderLayout.CENTER);
+		add(cancel,BorderLayout.EAST);
+		save.addActionListener(this);
+		dontSave.addActionListener(this);
+		cancel.addActionListener(this);
+		setSize(200,100);
+		addWindowListener(new MyWindowAdapter(this));
+		centerFrame();
+		setVisible(true);
+	}
+	private void centerFrame() 
+	{
+
+            Dimension windowSize = getSize();
+            GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
+            Point centerPoint = ge.getCenterPoint();
+
+            int dx = centerPoint.x - windowSize.width / 2;
+            int dy = centerPoint.y - windowSize.height / 2;    
+            setLocation(dx, dy);
+    }
+	public void actionPerformed(ActionEvent ae)
+	{
+		Button source=(Button)ae.getSource();
+		if(source==cancel)
+		{
+			dispose();
+			return;
+		}
+		if(source==save)
+			ref.save();
+		ref.dispose();
+	}
+}
+
+public class NotePad extends Frame implements TextListener,MouseListener,KeyListener
+{
+	Label status;
+	//Font font;//to change the font
+	int tab=0;
+	boolean isSaved;//a flag used for save if true save will not ask for file name 
+	boolean hasChanged;//a flag to indicate whether file has been modified and not saved
+	TextArea text;//workspace
+	MenuBar mBar;//menubar
+	Menu file,edit,search,format;// file and menus in menubar
+	MenuItem new1,open,close,save,saveAs;//menu items for file menu
+	MenuItem font,cut,copy,paste; //menu items for edit menu
+	MenuItem find,replace,goto1;//menu items for search menu
+	CheckboxMenuItem wordwrap,indent;//for wordwrap
+	FontDialog fontDialog=null;
+	FindReplaceDialog findReplaceDialog=null;//,replaceDialog=null;
+	//EnableMenuItem enableThread;//thread to enable or disable menitems 
+	String temp="";
+	IndentKeyEvent ike;
+	int line=0,pos=0;
+	public NotePad()
+	{
+		super("NotePad");
+		isSaved=false;
+		IndentKeyEvent ike=new IndentKeyEvent(this);
+		hasChanged=false;
+		setSize(700,400);
+		centerFrame();
+		setVisible(true);
+		text=new TextArea();
+		text.addMouseListener(this);
+		text.addKeyListener(this);
+		add(text,BorderLayout.CENTER);
+		addWindowListener(new MyWindowAdapter(this));
+		text.addTextListener(this);
+		//text.addKeyListener(new IndentKeyEvent(this));
+		//text.addKeyListener(new IndentKeyEvent(this));
+		initMenu();
+		ImageIcon ic=new ImageIcon("icon.PNG");
+		setIconImage(ic.getImage());
+		//font=getFont();
+		initFont();
+		text.addTextListener(new NotePadTextListener());
+		text.addMouseListener(new EnableCutCopyPaste());
+		text.addKeyListener(new EnableCutCopyPaste());
+		//enableThread=new EnableMenuItem(this);
+		//text.addKeyListener(ike);
+		//text.addTextListener(ike);
+		try
+		{
+			Transferable t = Toolkit.getDefaultToolkit().getSystemClipboard().getContents(null); 
+			if (t != null && t.isDataFlavorSupported(DataFlavor.stringFlavor)) 
+			{
+				paste.setEnabled(true);
+				temp=(String)t.getTransferData(DataFlavor.stringFlavor);
+			}
+		}
+		catch (Exception e)
+		{
+		}
+	}
+	//loads previously saved font
+	void initFont()
+	{
+		try
+		{
+			System.out.println("init was called");
+			String font="",style="",size="";
+			RandomAccessFile f=new RandomAccessFile("fontfile.fl","r");
+			font=f.readLine();
+			style=f.readLine();
+			size=f.readLine();
+			int i=font.indexOf('.');
+			if(i!=-1)
+				font=font.substring(0,i+1);
+			text.setFont( new Font(font,Integer.parseInt(style),Integer.parseInt(size)));
+		}
+		catch (Exception e)
+		{
+			System.out.println("error in initFont()");
+		}
+	}
+	 private void centerFrame() 
+	{
+
+            Dimension windowSize = getSize();
+            GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
+            Point centerPoint = ge.getCenterPoint();
+            int dx = centerPoint.x - windowSize.width / 2;
+            int dy = centerPoint.y - windowSize.height / 2;    
+            setLocation(dx, dy);
+    }
+	//initializes menu
+	void initMenu()
+	{
+		mBar=new MenuBar();
+		file=new Menu("file");
+		edit=new Menu("edit");
+		search=new Menu("search");
+		format=new Menu("format");
+		new1=new MenuItem("new");
+		open=new MenuItem("open");
+		close=new MenuItem("close");
+		save=new MenuItem("save");
+		saveAs=new MenuItem("save as");
+		font=new MenuItem("font");
+		cut=new MenuItem("cut");
+		copy=new MenuItem("copy");
+		paste=new MenuItem("paste");
+		find=new MenuItem("find");
+		replace=new MenuItem("replace");
+		goto1=new MenuItem("Goto");
+		wordwrap=new CheckboxMenuItem("WordWrap");
+		indent=new CheckboxMenuItem("Indent");
+		add(text,BorderLayout.CENTER);
+		setMenuBar(mBar);
+		mBar.add(file);
+		mBar.add(edit);
+		mBar.add(format);
+		mBar.add(search);
+		file.add(new1);
+		file.add(open);
+		file.addSeparator();
+		file.add(save);
+		file.add(saveAs);
+		file.addSeparator();
+		file.add(close);
+		file.addSeparator();
+		format.add(font);
+		format.add(wordwrap);
+		format.addSeparator();
+		format.add(indent);
+		edit.addSeparator();
+		edit.add(cut);
+		edit.add(copy);
+		edit.add(paste);
+		search.add(find);
+		search.add(replace);
+		search.add(goto1);
+		wordwrap.addItemListener(new WordwrapListener(this));
+		MenuActionListener mal=new MenuActionListener(this);
+		new1.addActionListener(mal);
+		open.addActionListener(mal);
+		save.addActionListener(mal);
+		saveAs.addActionListener(mal);
+		close.addActionListener(mal);
+		font.addActionListener(mal);
+		find.addActionListener(mal);
+		replace.addActionListener(mal);
+		goto1.addActionListener(mal);
+		cut.addActionListener(mal);
+		copy.addActionListener(mal);
+		paste.addActionListener(mal);
+		indent.addItemListener(new IndentItemListener(this));
+		search.setEnabled(false);
+		cut.setEnabled(false);
+		copy.setEnabled(false);
+		paste.setEnabled(false);
+	}
+	//save is implemented here because it is to be accessed by two classes 1>the CloseDialog 2>the MenuActionListener
+	void save()
+	{
+		hasChanged=false;
+		String temp;
+		if(isSaved==true)
+		{
+
+			temp=getTitle();
+			temp=temp.substring(0,temp.length()-1);
+			setTitle(temp);
+			try
+			{
+				FileWriter f=new FileWriter(temp);
+				String font="";
+				int style=0,size=0;
+				font=text.getFont().getFontName();
+				style=text.getFont().getStyle();
+				size=text.getFont().getSize();
+				f.write(font+"\r\n");
+				f.write(String.valueOf(style)+"\r\n");
+				f.write(String.valueOf(size)+"\r\n");
+				f.append(text.getText());
+				f.close();
+			}
+			catch (IOException e)
+			{
+				System.out.println("ERROR");
+			}
+		}
+		else
+		{
+			saveAs();
+		}
+	}
+	void saveAs()
+	{
+		hasChanged=false;
+		String temp;
+		FileDialog fd=new FileDialog(this,"NotePad",FileDialog.SAVE);
+		fd.setFile("Untitled.ra");
+		fd.setVisible(true);
+		temp=fd.getFile();
+		if(temp==null)
+			return;
+		String dir=fd.getDirectory();
+		try
+		{
+			
+			FileWriter f=new FileWriter(dir+temp);
+			if(temp.endsWith(".ra"))
+			{
+				String font="";
+				int style=0,size=0;
+				font=text.getFont().getFontName();
+				style=text.getFont().getStyle();
+				size=text.getFont().getSize();
+				f.write(font+"\r\n");
+				f.write(String.valueOf(style)+"\r\n");
+				f.write(String.valueOf(size)+"\r\n");
+				f.append(text.getText());
+			}
+			else
+				f.write(text.getText());
+			f.close();
+			setTitle(dir+temp);
+			isSaved=true;
+		}
+		catch (FileNotFoundException e)
+		{
+			System.out.println("File");
+		}
+		catch (IOException e)
+		{
+			System.out.println("ERROR");
+		}
+	}
+	void close()
+	{
+		if(text.getText().length()==0 || ( isSaved && !hasChanged ))
+			System.exit(1);
+		System.out.println(isSaved+"\t"+hasChanged);
+		if(! isSaved   ||   hasChanged)
+		{
+			new CloseDialog(this);
+			return;
+		}
+	}
+	public static void main(String args[])
+	{
+		new NotePad();
+	}
+	public void textValueChanged(TextEvent te)
+	{
+		if(!hasChanged)
+			setTitle(getTitle()+"*");
+		hasChanged=true;
+		/*String temp="";
+		System.out.println("was i executed?");
+		System.out.println("tab= "+tab);
+		temp=text.getText();
+		if(temp.length()==0)
+			return;
+		if(temp.charAt(temp.length()-1)=='\n')
+			for(int i=0;i<tab;i++)
+				text.append("\t");
+		*/
+		statusSet();
+	}
+	class NotePadTextListener implements TextListener
+	{
+		public void textValueChanged(TextEvent te)
+		{
+			if(text.getText().length()==0)
+				search.setEnabled(false);
+			else
+				search.setEnabled(true);
+		}
+	}
+	class EnableCutCopyPaste extends MouseAdapter implements KeyListener
+	{
+		public void keyPressed(KeyEvent ke)
+		{
+			//System.out.println(ke.getModifiers());
+			if(ke.getModifiers()==2  && (ke.getKeyCode()==ke.VK_C || ke.getKeyCode()==ke.VK_X) && !text.getSelectedText().equals(""))
+			{
+				paste.setEnabled(true);
+				temp=text.getSelectedText();
+			} 
+		}
+		public void keyTyped(KeyEvent ke)
+		{
+
+		}
+		public void keyReleased(KeyEvent ke)
+		{
+			if(text.getSelectedText().equals(""))
+			{
+				cut.setEnabled(false);
+				copy.setEnabled(false);
+				return;
+			}
+			cut.setEnabled(true);
+			copy.setEnabled(true);
+		}
+		public void mouseReleased(MouseEvent me)
+		{
+			if(text.getSelectedText().equals(""))
+			{
+				cut.setEnabled(false);
+				copy.setEnabled(false);
+				return;
+			}
+			cut.setEnabled(true);
+			copy.setEnabled(true);
+		}
+	}
+	public void mouseExited(MouseEvent me){}
+	public void mouseEntered(MouseEvent me){}
+	public void mouseReleased(MouseEvent me){}
+	public void mousePressed(MouseEvent me){}
+	public void mouseClicked(MouseEvent me)
+	{
+		statusSet();
+	}
+	void statusSet()
+	{
+		line=0;
+		pos=0;
+		int caretPos=text.getCaretPosition();
+		int i=0;
+		String temp=text.getText();
+		for(;i<caretPos;i++)
+		{
+			if(temp.charAt(i)=='\n')
+			{
+				line++;
+				pos=0;
+			}
+			/*else if(temp.charAt(i)=='\r') 
+			{
+				
+			}
+			else
+			{
+				pos++;
+			}*/
+		}
+		if(line!=0)
+			pos=-1+text.getCaretPosition()-text.getText().lastIndexOf("\n",text.getCaretPosition());
+		else 
+			pos=text.getCaretPosition();
+		//System.out.println("index of \\n ="+text.getText().lastIndexOf("\n",text.getCaretPosition())+"\tcaret="+text.getCaretPosition());
+		System.out.println("ln ="+line+"\tcol="+pos);
+	}
+	public void keyPressed(KeyEvent ke)
+	{
+		if(1==1)
+			statusSet();
+		if(ke.getKeyCode()==ke.VK_UP)
+		{
+			if(line ==1)
+			{
+				line=0;
+				pos=text.getCaretPosition();
+			}
+			else if(line!=0)
+			{
+				int carPos=text.getCaretPosition();
+				line--;
+				System.out.println("up car="+carPos+"\tlas ind= "+text.getText().lastIndexOf("\n",text.getText().lastIndexOf("\n",text.getCaretPosition())-1));
+				//pos=-1+text.getCaretPosition()-text.getText().lastIndexOf("\n",text.getText().lastIndexOf("\n",text.getCaretPosition())-1);
+				pos=text.getText().indexOf("\r",text.getText().lastIndexOf("\n",text.getText().lastIndexOf("\n",text.getCaretPosition())-1));
+				if(pos==-1)
+					pos=text.getCaretPosition()-text.getText().lastIndexOf("\n");
+				text.setCaretPosition(pos);
+			}	
+			//else 
+			//	pos=text.getCaretPosition();
+		}
+		else if(ke.getKeyCode()==ke.VK_DOWN)
+		{
+			if (!(text.getCaretPosition()>text.getText().lastIndexOf("\n")))
+				line++;
+			pos=-1+text.getCaretPosition()-text.getText().lastIndexOf("\n",text.getCaretPosition());
+		}
+		else if(ke.getKeyCode()==ke.VK_LEFT)
+		{
+			int carPos=text.getCaretPosition();
+			if(carPos==0)
+				;
+			else if(text.getText().charAt(carPos-1)=='\n')
+			{
+				line--;
+				System.out.println("LEFT car="+carPos+"\tlas ind= "+text.getText().lastIndexOf("\n",carPos-2));
+				pos=-3+carPos-text.getText().lastIndexOf("\n",carPos-2);
+				//pos=-1+text.getText().lastIndexOf("\n",text.getCaretPosition())-text.getCaretPosition();
+			}
+			else 
+				pos--;
+		}
+		else if(ke.getKeyCode()==ke.VK_RIGHT)
+		{	
+			int carPos=text.getCaretPosition();
+			//if(pos==text.getText().length()-text.getText().lastIndexOf("\n")-1)
+			if(carPos==text.getText().length())
+				;
+			else if(/*carPos<text.getText().length() &&*/ text.getText().charAt(carPos)=='\r')
+			{
+				line++;
+				pos=0;
+				//pos=-1+text.getCaretPosition()-text.getText().lastIndexOf("\n",text.getCaretPosition());
+			}
+			else 
+				pos++;
+			
+
+			/*if(pos==text.getText().length()-text.getText().lastIndexOf("\n")-1)
+				;
+			else
+				pos++;
+			//if(pos<text.getText().length()-text.getText().lastIndexOf("\n"))
+			//	pos++;*/
+		}
+		//else if(
+		
+		System.out.println("ln ="+line+"\tcol="+pos);
+	}
+	public void keyReleased(KeyEvent ke){}
+	public void keyTyped(KeyEvent ke)
+	{
+		int code=ke.getKeyCode();
+		if(code==ke.VK_ENTER)
+		{
+			line++;
+			pos=0;
+		}
+		else if(ke.getKeyCode()==ke.VK_BACK_SPACE)
+		{
+			int caret=text.getCaretPosition();
+			String temp=text.getText();
+			if(caret==0)
+				return;
+			if(temp.charAt(caret-1)=='\n')
+			{
+				line--;
+				pos=text.getCaretPosition()-text.getText().lastIndexOf("\n",text.getCaretPosition());
+			}
+			else 
+				pos--;
+			//line--;
+			//pos=text.getCaretPosition()-text.getText().lastIndexOf("\n",text.getCaretPosition())+1;
+		}
+		System.out.println("ln ="+line+"\tcol="+pos);
+	}
+	public void textValueChanged(TextEvent te)
+	{
+		statusSet();
+	}
+}
+
+
+
+class MyWindowAdapter extends WindowAdapter
+{
+	NotePad ref1;//reference for NotePad class
+	Dialog ref2;//reference for Dialogs
+	
+	MyWindowAdapter(Dialog ob)
+	{
+		ref2=ob;
+	}
+	MyWindowAdapter(Frame ob)
+	{
+		ref1=(NotePad)ob;
+	}
+	public void windowClosing(WindowEvent we)
+	{
+		if(ref1!=null)
+		{	
+			//if(ref1.text.getText().length()>0 && (ref1.isSaved || !ref1.hasChanged))
+			{
+				//ref1.enableThread.stop();
+				ref1.close();
+				//System.out.println("insidec closing");
+			}
+			//else
+			//	new CloseDialog(ref1);
+			return;
+		}	
+		ref2.dispose();
+		//NotePad temp=(NotePad)ref1;
+		/*NotePad temp=ref2.getParentFrame();
+		temp.findDialog=null;
+		temp.replaceDialog=null;
+		System.out.println(ref2);*/
+	}
+}
+//doubtful code
+class WordwrapListener implements ItemListener
+{
+	NotePad ref;//reference to NotePad
+	WordwrapListener(NotePad ob)
+	{
+		ref=ob;
+	}
+	public void itemStateChanged(ItemEvent ie)
+	{
+		CheckboxMenuItem source=(CheckboxMenuItem)ie.getSource();
+		String temp=ref.text.getText();
+		Font tempFont=ref.text.getFont();
+		ref.remove(ref.text);
+		try
+		{
+			//Thread.sleep(3000);
+		}
+		catch (Exception e)
+		{
+		}
+		if(ie.getStateChange()==ie.SELECTED)
+			ref.text=new TextArea(temp,0,0,TextArea.SCROLLBARS_VERTICAL_ONLY);
+		
+		else
+			ref.text=new TextArea(temp);
+		ref.text.setFont(tempFont);
+		ref.add(ref.text,BorderLayout.CENTER);
+		System.out.println("DONE");
+		Dimension tempSize=ref.getSize();
+		ref.setSize(tempSize.width-1,tempSize.height);
+		ref.setSize(tempSize.width,	tempSize.height);
+	}
+}
+class MenuActionListener implements ActionListener
+{
+	NotePad ref;//reference for NotePad
+	MenuActionListener(NotePad ob)
+	{
+		ref=(NotePad)ob;
+	}
+	/*void close()
+	{
+		if(ref.text.getText().length()==0 || ( ref.isSaved && !ref.hasChanged ))
+			System.exit(1);
+		System.out.println(ref.isSaved+"\t"+ref.hasChanged);
+		if(! ref.isSaved   ||   ref.hasChanged)
+		{
+			new CloseDialog(ref);
+			return;
+		}
+		if(ref.isSaved && !ref.hasChanged)
+		{
+			if(ref.text.getText().length()>0)
+				new CloseDialog(ref);
+			else
+			{
+				try
+				{
+					FileWriter f=new FileWriter("fontfile.fl");
+					String font="";
+					int style=0,size=0;
+					font=ref.text.getFont().getFontName();
+					style=ref.text.getFont().getStyle();
+					size=ref.text.getFont().getSize();
+					f.write(font+"\r\n");
+					f.write(String.valueOf(style)+"\r\n");
+					f.write(String.valueOf(size));
+					f.close();
+				}
+				catch (Exception e)
+				{
+				}
+				System.exit(1);
+			}
+		}
+	}*/
+	void open()
+	{
+		String data="";
+		FileDialog fd=new FileDialog(ref,"NotePad",FileDialog.LOAD);
+		fd.setFile("*.ra");
+		fd.setVisible(true);
+		String temp=fd.getFile();
+		if(temp==null)
+		{
+			System.out.println("esc");
+			return;
+		}
+		System.out.println(temp);
+		String dir=fd.getDirectory();
+		try
+		{
+			String font="",style="",size="";
+			RandomAccessFile f=new RandomAccessFile(dir+temp,"r");
+			
+			if(temp.endsWith(".ra"))
+			{
+				
+				font=f.readLine();
+				style=f.readLine();
+				size=f.readLine();
+				int i=font.indexOf('.');
+				if(i!=-1)
+					font=font.substring(0,i+1);
+				ref.text.setFont( new Font(font,Integer.parseInt(style),Integer.parseInt(size)));
+
+			}
+
+			//FileReader fin=new FileReader(dir+temp);
+			//BufferedReader f=new BufferedReader(fin);
+			//data=f.readLine();	
+			while( f.getFilePointer()<f.length())
+				data+=f.readLine()+"\r\n";
+			f.close();
+				ref.setTitle(dir+temp);
+			ref.text.setText(data);
+			ref.isSaved=true;
+			ref.hasChanged=false;
+			ref.tab=0;
+		}
+		catch (FileNotFoundException e)
+		{
+			System.out.println("File");
+		}
+		catch (IOException e)
+		{
+			System.out.println("ERROR");
+		}
+	}
+	void new1()
+	{
+		ref.setTitle("NotePad");
+		ref.isSaved=false;
+		ref.hasChanged=false;
+		ref.text.setText("");
+		ref.initFont();
+		ref.tab=0;
+	}
+	void font()
+	{
+		new FontDialog(ref);
+	}
+	void replace()
+	{
+		//if(ref.findDialog.isVisible())
+		//	return;
+		if(ref.findReplaceDialog==null)
+			ref.findReplaceDialog=new FindReplaceDialog(ref,"Replace");
+		else
+			ref.findReplaceDialog.requestFocus();
+	}
+	void find()
+	{
+		//if(ref.replaceDialog.isVisible())
+		//	return;
+		//System.out.println("hii");
+		if(ref.findReplaceDialog==null)
+			ref.findReplaceDialog=new FindReplaceDialog(ref,"Find");
+		else
+			ref.findReplaceDialog.requestFocus();
+	}
+	void cut()
+	{
+		ref.temp=ref.text.getSelectedText();
+		ref.text.replaceRange("",ref.text.getSelectionStart(),ref.text.getSelectionEnd());
+		ref.paste.setEnabled(true);
+		copy(ref.temp);
+	}
+	void copy()
+	{
+		ref.temp=ref.text.getSelectedText();
+		ref.paste.setEnabled(true);
+		copy(ref.temp);
+	}
+	void paste(int i)
+	{
+		int pos=ref.text.getCaretPosition();
+		ref.text.insert(ref.temp,pos);
+	}
+
+	public void copy(String text)
+    {
+        Clipboard clipboard = getSystemClipboard();
+
+        clipboard.setContents(new StringSelection(text), null);
+    }
+
+    public  void paste() throws AWTException
+    {
+        Robot robot = new Robot();
+
+        robot.keyPress(KeyEvent.VK_CONTROL);
+        robot.keyPress(KeyEvent.VK_V);
+        robot.keyRelease(KeyEvent.VK_CONTROL);
+        robot.keyRelease(KeyEvent.VK_V);
+    }
+
+    public  String get() throws HeadlessException, UnsupportedFlavorException, IOException
+    {
+        Clipboard systemClipboard = getSystemClipboard();
+        Object text = systemClipboard.getData(DataFlavor.stringFlavor);
+
+        return (String) text;
+    }
+
+    private Clipboard getSystemClipboard()
+    {
+        Toolkit defaultToolkit = Toolkit.getDefaultToolkit();
+        Clipboard systemClipboard = defaultToolkit.getSystemClipboard();
+
+        return systemClipboard;
+    }
+	void goto1()
+	{
+		new Goto(ref);
+	}
+	public void actionPerformed(ActionEvent ae)
+	{
+		MenuItem source=(MenuItem)ae.getSource();
+		if(source==ref.new1)
+			new1();
+		else if(source==ref.open)
+			open();
+		else if(source==ref.save)
+			ref.save();
+		else if(source==ref.saveAs)
+			ref.saveAs();
+		else if(source==ref.close)
+			ref.close();
+		else if(source==ref.font)
+			font();
+		else if(source==ref.replace)
+			replace();
+		else if(source==ref.find)
+			find();
+		else if(source==ref.cut)
+			cut();
+		else if(source==ref.copy)
+			copy();
+		else if (source==ref.goto1)
+		{
+			goto1();
+		}
+		else if(source==ref.paste)
+			try
+			{
+				paste(1);
+			}
+			catch (Exception e)
+			{
+			}
+	}
+}

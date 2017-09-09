@@ -1,0 +1,4 @@
+Dialog.bold
+1
+26
+as asd asdasd asdadsa
